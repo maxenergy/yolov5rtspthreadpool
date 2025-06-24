@@ -200,12 +200,26 @@ void ZLPlayer::display() {
         return;
     }
 
+    // Draw detection results on the frame if available
+    if (frameDataPtr->hasDetections && !frameDataPtr->detections.empty()) {
+        LOGD("Drawing %zu detections on frame %d", frameDataPtr->detections.size(), frameDataPtr->frameId);
+
+        // Draw detections directly on RGBA buffer for better performance
+        DrawDetectionsOnRGBA((uint8_t*)frameDataPtr->data.get(),
+                           frameDataPtr->screenW,
+                           frameDataPtr->screenH,
+                           frameDataPtr->screenStride,
+                           frameDataPtr->detections);
+    }
+
     // Render the frame using the smart pointer's get() method
     renderFrame((uint8_t *) frameDataPtr->data.get(), frameDataPtr->screenW,
                 frameDataPtr->screenH, frameDataPtr->screenStride);
 
     // Frame data is managed by shared_ptr, no manual deletion needed
-    LOGD("Rendered frame %d: %dx%d", frameDataPtr->frameId, frameDataPtr->screenW, frameDataPtr->screenH);
+    LOGD("Rendered frame %d: %dx%d with %zu detections", frameDataPtr->frameId,
+         frameDataPtr->screenW, frameDataPtr->screenH,
+         frameDataPtr->hasDetections ? frameDataPtr->detections.size() : 0);
 
     // Control frame rate - limit to ~30 FPS
     std::this_thread::sleep_for(std::chrono::milliseconds(33));
@@ -248,6 +262,12 @@ void ZLPlayer::get_detect_result() {
             if (frameData && frameData->data) {
                 app_ctx.result_cnt++;
                 LOGD("Get detect result counter:%d start display", app_ctx.result_cnt);
+
+                // 将检测结果存储到frame数据中
+                frameData->detections = objects;
+                frameData->hasDetections = true;
+
+                LOGD("Stored %zu detections in frame %d", objects.size(), frameData->frameId);
 
                 // 加入渲染队列
                 app_ctx.renderFrameQueue->push(frameData);

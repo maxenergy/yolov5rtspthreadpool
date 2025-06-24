@@ -62,6 +62,7 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
         rkmedia/utils/drawing.cpp
         process/preprocess.cpp
         process/yolov5_postprocess.cpp
+        draw/cv_draw.cpp
         )
 
 target_link_libraries(${CMAKE_PROJECT_NAME}
