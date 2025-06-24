@@ -13,3 +13,10 @@
 .externalNativeBuild
 .cxx
 local.properties
+3rdparty/src
+
+# Large binary files (>100MB) - exclude from git
+3rdparty/target/*/lib/*.so
+3rdparty/target/*/lib/*.a
+3rdparty/target/*/lib/*.dylib
+3rdparty/target/*/lib/*.dll

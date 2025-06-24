@@ -1,5 +1,5 @@
-#include <api/include/mk_common.h>
-#include <api/include/mk_player.h>
+#include <mk_common.h>
+#include <mk_player.h>
 #include <android/native_window_jni.h>
 #include "ZLPlayer.h"
 #include "mpp_err.h"
@@ -60,6 +60,9 @@ ZLPlayer::ZLPlayer(char *modelFileData, int modelDataLen) {
     app_ctx.yolov5ThreadPool = new Yolov5ThreadPool(); // 创建线程池
     app_ctx.yolov5ThreadPool->setUpWithModelData(20, this->modelFileContent, this->modelFileSize);
 
+    // Initialize render frame queue
+    app_ctx.renderFrameQueue = new RenderFrameQueue();
+
     // app_ctx.mppDataThreadPool->setUpWithModelData(THREAD_POOL, this->modelFileContent, this->modelFileSize);
 
     // yolov8_thread_pool->setUp(model_path, 12);   // 初始化线程池
@@ -76,9 +79,10 @@ ZLPlayer::ZLPlayer(char *modelFileData, int modelDataLen) {
     }
     // 启动rtsp线程
     pthread_create(&pid_rtsp, nullptr, rtps_process, this);
-    // pthread_create(&pid_render, nullptr, desplay_process, this);
+    // 启动显示线程
+    pthread_create(&pid_render, nullptr, desplay_process, this);
     // 读取视频流
-    // process_video_rtsp(&app_ctx, "rtsp://192.168.1.159:554/stream1");
+    // process_video_rtsp(&app_ctx, "rrtsp://192.168.31.147:8554/unicast");
 }
 
 void API_CALL
@@ -141,7 +145,9 @@ void renderFrame(uint8_t *src_data, int width, int height, int src_line_size) {
 
     pthread_mutex_lock(&windowMutex);
     if (!window) {
+        LOGW("ANativeWindow is null, cannot render frame");
         pthread_mutex_unlock(&windowMutex); // 出现了问题后，必须考虑到，释放锁，怕出现死锁问题
+        return;
     }
 
     // 设置窗口的大小，各个属性
@@ -175,50 +181,92 @@ void renderFrame(uint8_t *src_data, int width, int height, int src_line_size) {
 }
 
 void ZLPlayer::display() {
-    // int queueSize = app_ctx.renderFrameQueue->size();
-    // LOGD("app_ctx.renderFrameQueue.size() :%d", queueSize);
+    int queueSize = app_ctx.renderFrameQueue->size();
+    if (queueSize > 5) {  // Only log when queue is getting full
+        LOGD("app_ctx.renderFrameQueue.size() :%d", queueSize);
+    }
 
-    // auto frameDataPtr = app_ctx.renderFrameQueue->pop();
-    //    if (frameDataPtr == nullptr) {
-    //        LOGD("frameDataPtr is null");
-    //        return;
-    //    }
-    std::this_thread::sleep_until(nextRendTime);
-    // renderFrame((uint8_t *) frameDataPtr->data, frameDataPtr->screenW, frameDataPtr->screenH, frameDataPtr->screenStride);
-    // 释放内存
-    // delete frameDataPtr->data;
-    // frameDataPtr->data = nullptr;
+    auto frameDataPtr = app_ctx.renderFrameQueue->pop();
+    if (frameDataPtr == nullptr) {
+        // No frame available, this is normal with timeout-based pop
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        return;
+    }
 
-    // 设置下一次执行的时间点
-    nextRendTime = std::chrono::steady_clock::now() + std::chrono::milliseconds(30);
+    // Validate frame data before rendering
+    if (!frameDataPtr->data || frameDataPtr->screenW <= 0 || frameDataPtr->screenH <= 0) {
+        LOGE("Invalid frame data: data=%p, w=%d, h=%d",
+             frameDataPtr->data.get(), frameDataPtr->screenW, frameDataPtr->screenH);
+        return;
+    }
 
+    // Render the frame using the smart pointer's get() method
+    renderFrame((uint8_t *) frameDataPtr->data.get(), frameDataPtr->screenW,
+                frameDataPtr->screenH, frameDataPtr->screenStride);
+
+    // Frame data is managed by shared_ptr, no manual deletion needed
+    LOGD("Rendered frame %d: %dx%d", frameDataPtr->frameId, frameDataPtr->screenW, frameDataPtr->screenH);
+
+    // Control frame rate - limit to ~30 FPS
+    std::this_thread::sleep_for(std::chrono::milliseconds(33));
 }
 
 void ZLPlayer::get_detect_result() {
-    std::vector<Detection> objects;
-    // LOGD("decoder_callback Getting result count :%d", app_ctx.result_cnt);
-    auto ret_code = app_ctx.yolov5ThreadPool->getTargetResultNonBlock(objects, app_ctx.result_cnt);
-    if (ret_code == NN_SUCCESS) {
+    // 添加空指针检查和线程池初始化检查
+    if (!app_ctx.yolov5ThreadPool) {
+        LOGE("yolov5ThreadPool is null, skipping result retrieval");
+        return;
+    }
 
-        uint8_t idx;
-        for (idx = 0; idx < objects.size(); idx++) {
-            LOGD("objects[%d].classId: %d\n", idx, objects[idx].class_id);
-            LOGD("objects[%d].prop: %f\n", idx, objects[idx].confidence);
-            LOGD("objects[%d].class name: %s\n", idx, objects[idx].className.c_str());
+    // 检查渲染队列大小，防止内存积累
+    int queueSize = app_ctx.renderFrameQueue->size();
+    if (queueSize > DISPLAY_QUEUE_MAX_SIZE / 2) {
+        LOGW("Render queue getting full (%d), clearing old frames", queueSize);
+        app_ctx.renderFrameQueue->clear();
+    }
+
+    // 检查线程池是否已正确初始化
+    try {
+        std::vector<Detection> objects;
+
+        // 安全地调用getTargetResultNonBlock
+        auto ret_code = app_ctx.yolov5ThreadPool->getTargetResultNonBlock(objects, app_ctx.result_cnt);
+
+        if (ret_code == NN_SUCCESS) {
+            LOGD("Successfully got detection results, count: %zu", objects.size());
+
+            // Only log detection details in debug builds to reduce log spam
+            #ifdef DEBUG
+            for (size_t idx = 0; idx < objects.size() && idx < 5; idx++) {  // Limit to first 5 objects
+                LOGD("objects[%zu].classId: %d, prop: %f, class: %s",
+                     idx, objects[idx].class_id, objects[idx].confidence, objects[idx].className.c_str());
+            }
+            #endif
+
+            // 安全地获取图像结果
+            auto frameData = app_ctx.yolov5ThreadPool->getTargetImgResult(app_ctx.result_cnt);
+            if (frameData && frameData->data) {
+                app_ctx.result_cnt++;
+                LOGD("Get detect result counter:%d start display", app_ctx.result_cnt);
+
+                // 加入渲染队列
+                app_ctx.renderFrameQueue->push(frameData);
+                LOGD("Frame %d pushed to render queue, queue size: %d",
+                     frameData->frameId, app_ctx.renderFrameQueue->size());
+
+            } else {
+                LOGW("frameData is null or frameData->data is null for result %d", app_ctx.result_cnt);
+            }
+
+        } else if (NN_RESULT_NOT_READY == ret_code) {
+            // Normal case - no result ready yet
+        } else {
+            LOGW("getTargetResultNonBlock returned error code: %d", ret_code);
         }
-        auto frameData = app_ctx.yolov5ThreadPool->getTargetImgResult(app_ctx.result_cnt);
-        app_ctx.result_cnt++;
-        LOGD("Get detect result counter:%d start display", app_ctx.result_cnt);
-        // 加入队列
-        // app_ctx.renderFrameQueue->push(frameData);
-
-        // renderFrame((uint8_t *) frameData->data, frameData->screenW, frameData->screenH, frameData->screenStride);
-        // 释放内存
-        delete frameData->data;
-        frameData->data = nullptr;
-
-    } else if (NN_RESULT_NOT_READY == ret_code) {
-        // LOGD("decoder_callback wait for result ready");
+    } catch (const std::exception& e) {
+        LOGE("Exception in get_detect_result: %s", e.what());
+    } catch (...) {
+        LOGE("Unknown exception in get_detect_result");
     }
 }
 
@@ -286,7 +334,47 @@ int ZLPlayer::process_video_rtsp() {
 }
 
 ZLPlayer::~ZLPlayer() {
+    LOGD("ZLPlayer destructor called");
 
+    // Stop threads gracefully
+    if (app_ctx.yolov5ThreadPool) {
+        app_ctx.yolov5ThreadPool->stopAll();
+    }
+
+    // Wait for threads to finish
+    // Note: pthread_cancel is not available on Android, threads should be stopped gracefully
+    if (pid_rtsp != 0) {
+        pthread_join(pid_rtsp, nullptr);
+        pid_rtsp = 0;
+    }
+
+    if (pid_render != 0) {
+        pthread_join(pid_render, nullptr);
+        pid_render = 0;
+    }
+
+    // Clean up resources
+    if (app_ctx.renderFrameQueue) {
+        delete app_ctx.renderFrameQueue;
+        app_ctx.renderFrameQueue = nullptr;
+    }
+
+    if (app_ctx.yolov5ThreadPool) {
+        delete app_ctx.yolov5ThreadPool;
+        app_ctx.yolov5ThreadPool = nullptr;
+    }
+
+    if (app_ctx.decoder) {
+        delete app_ctx.decoder;
+        app_ctx.decoder = nullptr;
+    }
+
+    if (modelFileContent) {
+        free(modelFileContent);
+        modelFileContent = nullptr;
+    }
+
+    LOGD("ZLPlayer destructor completed");
 }
 
 static struct timeval lastRenderTime;
@@ -344,17 +432,17 @@ void ZLPlayer::mpp_decoder_frame_callback(void *userdata, int width_stride, int 
     int dstImgSize = width_stride * height_stride * get_bpp_from_format(RK_FORMAT_RGBA_8888);
     LOGD("img size is %d", dstImgSize);
     // img size is 33177600 1080p: 8355840
-    char *dstBuf = new char[dstImgSize]();
-    // rga_change_color_async(width_stride, height_stride, RK_FORMAT_YCbCr_420_SP, (char *) data,
-    // width_stride, height_stride, RK_FORMAT_RGBA_8888, dstBuf);
+
+    // Use smart pointer for automatic memory management (C++11 compatible)
+    std::unique_ptr<char[]> dstBuf(new char[dstImgSize]());
 
     rga_change_color(width_stride, height_stride, RK_FORMAT_YCbCr_420_SP, (char *) data,
-                     width_stride, height_stride, RK_FORMAT_RGBA_8888, dstBuf);
+                     width_stride, height_stride, RK_FORMAT_RGBA_8888, dstBuf.get());
 
     auto frameData = std::make_shared<frame_data_t>();
     frameData->dataSize = dstImgSize;
     frameData->screenStride = width * get_bpp_from_format(RK_FORMAT_RGBA_8888);
-    frameData->data = dstBuf;
+    frameData->data = std::move(dstBuf);  // Transfer ownership to frameData
     frameData->screenW = width;
     frameData->screenH = height;
     frameData->heightStride = height_stride;

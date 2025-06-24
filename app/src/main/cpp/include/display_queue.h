@@ -22,6 +22,8 @@ public:
 
     int size();
 
+    void clear();  // Clear all frames from queue
+
 private:
     queue <std::shared_ptr<frame_data_t>> m_queue;
     mutex m_mutex;

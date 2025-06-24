@@ -2,10 +2,13 @@ cmake_minimum_required(VERSION 3.22.1)
 
 project("myyolov5rtspthreadpool")
 
-set(FFMPEG ${CMAKE_SOURCE_DIR}/ffmpeg)  # ffmpeg的路径
+# 3rdparty dependencies paths
+set(THIRDPARTY_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../../3rdparty/target)
+set(FFMPEG ${THIRDPARTY_ROOT}/ffmpeg)  # ffmpeg的路径
+set(ZLMEDIAKIT ${THIRDPARTY_ROOT}/zlmediakit)  # ZLMediaKit的路径
 # set(RTMP ${CMAKE_SOURCE_DIR}/rtmp) # rtmp的路径
 set(RKNN ${CMAKE_SOURCE_DIR}/rknn)
-set(OPENCV ${${CMAKE_SOURCE_DIR}/opencv})
+set(OPENCV ${CMAKE_SOURCE_DIR}/opencv)
 set(MPP ${CMAKE_SOURCE_DIR}/mpp)
 set(RGA ${CMAKE_SOURCE_DIR}/rga)
 
@@ -13,6 +16,7 @@ include_directories(${CMAKE_SOURCE_DIR}/include)  # 导入include文件夹
 include_directories(${CMAKE_SOURCE_DIR}/task)
 include_directories(${RKNN}/include)  # 导入rknn的头文件
 include_directories(${FFMPEG}/include)  # 导入ffmpeg的头文件
+include_directories(${ZLMEDIAKIT}/include)  # 导入ZLMediaKit的头文件
 include_directories(${OPENCV}/include)
 include_directories(${MPP}/include)
 include_directories(${RGA}/include)
@@ -31,21 +35,8 @@ set(OPENSSL_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../libs/${ANDROID_ABI}")
 
 find_package(OpenCV 4.8 REQUIRED java)
 
-# 记得修改路径
-set(ZLMediaKit_Root "C:\\ZLMediaKit")
+# JNI Root
 set(JNI_Root ${CMAKE_CURRENT_SOURCE_DIR})
-
-# 添加主工程cmake
-add_subdirectory(${ZLMediaKit_Root} ${EXECUTABLE_OUTPUT_PATH})
-
-include_directories(${ZLMediaKit_Root}/src)
-include_directories(${ZLMediaKit_Root}/srt)
-include_directories(${ZLMediaKit_Root}/webrtc)
-include_directories(${ZLMediaKit_Root}/server)
-include_directories(${ZLMediaKit_Root}/3rdpart)
-include_directories(${ZLMediaKit_Root}/3rdpart/media-server)
-include_directories(${ZLMediaKit_Root}/3rdpart/ZLToolKit/src)
-include_directories(${ZLMediaKit_Root}/3rdpart/ZLToolKit/api/include)
 
 # find_package(OpenCV REQUIRED)
 if (OpenCV_FOUND)
@@ -74,14 +65,16 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
         )
 
 target_link_libraries(${CMAKE_PROJECT_NAME}
-        -Wl,--start-group android ${log-lib} z ${MK_LINK_LIBRARIES} -Wl,--end-group
         ${OpenCV_LIBS}
         android
         log
         ${MPP}/libs/${ANDROID_ABI}/libmpp.so
         ${RGA}/libs/${ANDROID_ABI}/librga.so
         ${RKNN}/libs/${ANDROID_ABI}/librknnrt.so
-
-        mk_api # 在mpp_libs下，ZLMediaKit API库
-
+        ${FFMPEG}/lib/libavformat.so
+        ${FFMPEG}/lib/libavcodec.so
+        ${FFMPEG}/lib/libavutil.so
+        ${FFMPEG}/lib/libswresample.so
+        ${FFMPEG}/lib/libswscale.so
+        ${ZLMEDIAKIT}/lib/libmk_api.so
         )

@@ -78,3 +78,31 @@ Java_com_wulala_myyolov5rtspthreadpool_MainActivity_setNativeAssetManager(
 
     LOGD("AAssetManager been set");
 }
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_wulala_myyolov5rtspthreadpool_MainActivity_setNativeSurface(
+        JNIEnv *env, jobject instance, jobject surface) {
+
+    pthread_mutex_lock(&windowMutex);
+
+    // Release previous window if exists
+    if (window) {
+        ANativeWindow_release(window);
+        window = nullptr;
+    }
+
+    // Set new window from surface
+    if (surface) {
+        window = ANativeWindow_fromSurface(env, surface);
+        if (window) {
+            LOGD("ANativeWindow set successfully");
+        } else {
+            LOGE("Failed to create ANativeWindow from surface");
+        }
+    } else {
+        LOGD("Surface is null, clearing ANativeWindow");
+    }
+
+    pthread_mutex_unlock(&windowMutex);
+}

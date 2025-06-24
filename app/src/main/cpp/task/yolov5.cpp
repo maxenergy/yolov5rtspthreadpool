@@ -205,7 +205,7 @@ nn_error_e Yolov5::RunWithFrameData(const std::shared_ptr <frame_data_t> frameDa
     // memset(&src_rect, 0, sizeof(src_rect));
     // rga_letter_box(&origin, frameData->data, inputWidth, inputHeight, frameData->frameFormat, &letterbox_info_.hor, &letterbox_info_.pad);
 
-    origin = wrapbuffer_virtualaddr((void *) frameData->data, inputWidth, inputHeight, frameData->frameFormat);
+    origin = wrapbuffer_virtualaddr((void *) frameData->data.get(), inputWidth, inputHeight, frameData->frameFormat);
     cv::Mat origin_mat = cv::Mat::zeros(inputHeight, inputWidth, CV_8UC3);
     // 先转成cv matrix
     rga_buffer_t rgb_img = wrapbuffer_virtualaddr((void *) origin_mat.data, inputWidth, inputHeight, RK_FORMAT_RGB_888);

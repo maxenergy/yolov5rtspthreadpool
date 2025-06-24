@@ -113,37 +113,41 @@ nn_error_e Yolov5ThreadPool::getTargetResult(std::vector<Detection> &objects, in
 }
 
 nn_error_e Yolov5ThreadPool::getTargetResultNonBlock(std::vector<Detection> &objects, int id) {
-    if (results.find(id) == results.end()) {
+    std::lock_guard<std::mutex> lock(mtx2);
+
+    // 在锁保护下检查结果是否存在
+    auto it = results.find(id);
+    if (it == results.end()) {
         return NN_RESULT_NOT_READY;
     }
-    std::lock_guard<std::mutex> lock(mtx2);
-    objects = results[id];
-    // remove from map
-    results.erase(id);
+
+    // 安全地获取结果
+    objects = it->second;
+
+    // 从map中移除结果
+    results.erase(it);
     // img_results.erase(id);
 
     return NN_SUCCESS;
 }
 
 std::shared_ptr<frame_data_t> Yolov5ThreadPool::getTargetImgResult(int id) {
-    int loop_cnt = 0;
-    //    while (img_results.find(id) == img_results.end()) {
-    //        // sleep 1ms
-    //        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    //        loop_cnt++;
-    //        if (loop_cnt > 1000) {
-    //            NN_LOG_ERROR("getTargetImgResult timeout");
-    //            return nullptr;
-    //        }
-    //    }
     std::lock_guard<std::mutex> lock(mtx2);
-    auto frameData = img_results[id];
-    // img = img_results[id];
-    // remove from map
-    // img_results.erase(id);
+
+    // 在锁保护下检查图像结果是否存在
+    auto it = img_results.find(id);
+    if (it == img_results.end()) {
+        LOGW("getTargetImgResult: frame %d not found", id);
+        return nullptr;
+    }
+
+    // 安全地获取图像结果
+    auto frameData = it->second;
+
+    // 从map中移除图像结果
+    img_results.erase(it);
+
     return frameData;
-    // results.erase(id);
-    // return ;
 }
 
 // 停止所有线程

@@ -49,8 +49,9 @@ public:
     // static RenderCallback renderCallback;
     rknn_app_context_t app_ctx;
     // char *rtsp_url = "rtsp://192.168.1.10:554/stream1";
-    char *rtsp_url = "rtsp://192.168.1.159:554/stream1";
+    // char *rtsp_url = "rtsp://192.168.31.147:8554/unicast";
     // char *rtsp_url = "rtsp://192.168.1.155:554/stream1";
+    char *rtsp_url = "rtsp://admin:sharpi1688@192.168.1.127";
 
     // ZLPlayer(const char *data_source, JNICallbackHelper *helper);
     ZLPlayer(char *modelFileData, int modelDataLen);
