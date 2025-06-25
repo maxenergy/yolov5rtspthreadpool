@@ -5,9 +5,10 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <sys/syscall.h>
+#include "log4c.h"
 
-#define LOGD printf
-// #define LOGD
+// Use Android logging system
+// #define LOGD printf
 
 static unsigned long GetCurrentTimeMS()
 {
@@ -72,19 +73,23 @@ int MppDecoder::Init(int video_type, int fps, void *userdata)
     MppDecCfg cfg = NULL;
 
     MppCtx mpp_ctx = NULL;
+    LOGD("Creating MPP context...");
     ret = mpp_create(&mpp_ctx, &mpp_mpi);
     if (MPP_OK != ret)
     {
-        LOGD("mpp_create failed ");
-        return 0;
+        LOGE("mpp_create failed, ret: %d", ret);
+        return -1;
     }
+    LOGD("MPP context created successfully");
 
+    LOGD("Initializing MPP decoder with type %d...", mpp_type);
     ret = mpp_init(mpp_ctx, MPP_CTX_DEC, mpp_type);
     if (ret)
     {
-        LOGD("%p mpp_init failed ", mpp_ctx);
+        LOGE("%p mpp_init failed, ret: %d", mpp_ctx, ret);
         return -1;
     }
+    LOGD("MPP decoder initialized successfully");
 
     mpp_dec_cfg_init(&cfg);
 
@@ -92,7 +97,7 @@ int MppDecoder::Init(int video_type, int fps, void *userdata)
     ret = mpp_mpi->control(mpp_ctx, MPP_DEC_GET_CFG, cfg);
     if (ret)
     {
-        LOGD("%p failed to get decoder cfg ret %d ", mpp_ctx, ret);
+        LOGE("%p failed to get decoder cfg ret %d", mpp_ctx, ret);
         return -1;
     }
 
@@ -103,14 +108,14 @@ int MppDecoder::Init(int video_type, int fps, void *userdata)
     ret = mpp_dec_cfg_set_u32(cfg, "base:split_parse", need_split);
     if (ret)
     {
-        LOGD("%p failed to set split_parse ret %d ", mpp_ctx, ret);
+        LOGE("%p failed to set split_parse ret %d", mpp_ctx, ret);
         return -1;
     }
 
     ret = mpp_mpi->control(mpp_ctx, MPP_DEC_SET_CFG, cfg);
     if (ret)
     {
-        LOGD("%p failed to set cfg %p ret %d ", mpp_ctx, cfg, ret);
+        LOGE("%p failed to set cfg %p ret %d", mpp_ctx, cfg, ret);
         return -1;
     }
 
@@ -122,7 +127,9 @@ int MppDecoder::Init(int video_type, int fps, void *userdata)
     loop_data.packet_size = packet_size;
     loop_data.frame = 0;
     loop_data.frame_count = 0;
-    return 1;
+
+    LOGD("MPP decoder initialization completed successfully");
+    return 0; // Success should return 0, not 1
 }
 
 int MppDecoder::Reset()

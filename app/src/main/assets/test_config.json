@@ -1,0 +1,121 @@
+{
+  "test_configuration": {
+    "name": "Multi-Channel NVR System Test",
+    "version": "1.0",
+    "description": "Test configuration for 16-channel RTSP streaming with YOLOv5 detection"
+  },
+  "test_channels": [
+    {
+      "channel_id": 0,
+      "name": "Camera 235 - Profile 0",
+      "rtsp_url": "rtsp://admin:sharpi1688@192.168.1.235:554/live?profile=Profile_0000",
+      "detection_enabled": true,
+      "priority": "high"
+    },
+    {
+      "channel_id": 1,
+      "name": "Camera 137 - Live Stream 2",
+      "rtsp_url": "rtsp://admin:sharpi1688@192.168.1.137:554/live/2",
+      "detection_enabled": true,
+      "priority": "high"
+    },
+    {
+      "channel_id": 2,
+      "name": "Camera 2 - Main Stream",
+      "rtsp_url": "rtsp://admin:sharpi1688@192.168.1.2:554/1/1",
+      "detection_enabled": true,
+      "priority": "high"
+    },
+    {
+      "channel_id": 3,
+      "name": "Camera 127 - Main Stream",
+      "rtsp_url": "rtsp://admin:sharpi1688@192.168.1.127:554/",
+      "detection_enabled": true,
+      "priority": "high"
+    },
+    {
+      "channel_id": 4,
+      "name": "Test Channel 5",
+      "rtsp_url": "rtsp://admin:sharpi1688@192.168.1.127",
+      "detection_enabled": true,
+      "priority": "low"
+    },
+    {
+      "channel_id": 5,
+      "name": "Test Channel 6",
+      "rtsp_url": "rtsp://admin:sharpi1688@192.168.1.127",
+      "detection_enabled": false,
+      "priority": "low"
+    }
+  ],
+  "performance_targets": {
+    "target_fps": 30.0,
+    "min_fps_threshold": 25.0,
+    "max_channels": 16,
+    "max_memory_usage_mb": 512,
+    "max_cpu_usage_percent": 80
+  },
+  "test_scenarios": [
+    {
+      "name": "Single Channel Test",
+      "description": "Test single channel streaming and detection",
+      "active_channels": [0],
+      "layout": "1x1",
+      "duration_seconds": 60
+    },
+    {
+      "name": "Quad Channel Test", 
+      "description": "Test 4-channel streaming in 2x2 layout",
+      "active_channels": [0, 1, 2, 3],
+      "layout": "2x2",
+      "duration_seconds": 120
+    },
+    {
+      "name": "Nine Channel Test",
+      "description": "Test 9-channel streaming in 3x3 layout",
+      "active_channels": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+      "layout": "3x3", 
+      "duration_seconds": 180
+    },
+    {
+      "name": "Full Channel Test",
+      "description": "Test all 16 channels in 4x4 layout",
+      "active_channels": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+      "layout": "4x4",
+      "duration_seconds": 300
+    },
+    {
+      "name": "Layout Switching Test",
+      "description": "Test dynamic layout switching between different configurations",
+      "active_channels": [0, 1, 2, 3],
+      "layout_sequence": ["1x1", "2x2", "3x3", "4x4"],
+      "switch_interval_seconds": 30
+    },
+    {
+      "name": "Performance Stress Test",
+      "description": "Test system under maximum load with all features enabled",
+      "active_channels": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+      "layout": "4x4",
+      "detection_enabled": true,
+      "duration_seconds": 600
+    }
+  ],
+  "validation_criteria": {
+    "fps_stability": {
+      "min_fps": 25.0,
+      "fps_variance_threshold": 5.0
+    },
+    "memory_usage": {
+      "max_memory_mb": 512,
+      "memory_leak_threshold_mb": 50
+    },
+    "detection_accuracy": {
+      "min_detection_rate": 0.8,
+      "max_false_positive_rate": 0.1
+    },
+    "ui_responsiveness": {
+      "max_touch_response_ms": 100,
+      "max_layout_switch_ms": 500
+    }
+  }
+}

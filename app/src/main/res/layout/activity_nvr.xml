@@ -1,0 +1,576 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/black"
+    tools:context=".MainActivity">
+
+    <!-- Main video display container -->
+    <FrameLayout
+        android:id="@+id/video_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/black">
+
+        <!-- Single channel surface view (default) -->
+        <SurfaceView
+            android:id="@+id/surface_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- Multi-channel grid container (initially hidden) -->
+        <FrameLayout
+            android:id="@+id/grid_scroll_container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone"
+            android:background="@color/black">
+
+            <GridLayout
+                android:id="@+id/grid_container"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:columnCount="2"
+                android:rowCount="2"
+                android:background="@color/black">
+
+            <!-- Channel 1 -->
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="1dp"
+                android:background="#333333">
+
+                <SurfaceView
+                    android:id="@+id/surface_view_1"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:id="@+id/channel_label_1"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|start"
+                    android:layout_margin="4dp"
+                    android:text="CH1"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:background="#80000000"
+                    android:padding="2dp" />
+            </FrameLayout>
+
+            <!-- Channel 2 -->
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="1dp"
+                android:background="#333333">
+
+                <SurfaceView
+                    android:id="@+id/surface_view_2"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:id="@+id/channel_label_2"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|start"
+                    android:layout_margin="4dp"
+                    android:text="CH2"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:background="#80000000"
+                    android:padding="2dp" />
+            </FrameLayout>
+
+            <!-- Channel 3 -->
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="1dp"
+                android:background="#333333">
+
+                <SurfaceView
+                    android:id="@+id/surface_view_3"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:id="@+id/channel_label_3"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|start"
+                    android:layout_margin="4dp"
+                    android:text="CH3"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:background="#80000000"
+                    android:padding="2dp" />
+            </FrameLayout>
+
+            <!-- Channel 4 -->
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="1dp"
+                android:background="#333333">
+
+                <SurfaceView
+                    android:id="@+id/surface_view_4"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:id="@+id/channel_label_4"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|start"
+                    android:layout_margin="4dp"
+                    android:text="CH4"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:background="#80000000"
+                    android:padding="2dp" />
+            </FrameLayout>
+
+            <!-- Channels 5-16 for 3x3 and 4x4 layouts -->
+            <!-- Channel 5 -->
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="1dp"
+                android:background="#333333"
+                android:visibility="gone">
+
+                <SurfaceView
+                    android:id="@+id/surface_view_5"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:id="@+id/channel_label_5"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|start"
+                    android:layout_margin="4dp"
+                    android:text="CH5"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:background="#80000000"
+                    android:padding="2dp" />
+            </FrameLayout>
+
+            <!-- Channel 6 -->
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="1dp"
+                android:background="#333333"
+                android:visibility="gone">
+
+                <SurfaceView
+                    android:id="@+id/surface_view_6"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:id="@+id/channel_label_6"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|start"
+                    android:layout_margin="4dp"
+                    android:text="CH6"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:background="#80000000"
+                    android:padding="2dp" />
+            </FrameLayout>
+
+            <!-- Channel 7 -->
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="1dp"
+                android:background="#333333"
+                android:visibility="gone">
+
+                <SurfaceView
+                    android:id="@+id/surface_view_7"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:id="@+id/channel_label_7"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|start"
+                    android:layout_margin="4dp"
+                    android:text="CH7"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:background="#80000000"
+                    android:padding="2dp" />
+            </FrameLayout>
+
+            <!-- Channel 8 -->
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="1dp"
+                android:background="#333333"
+                android:visibility="gone">
+
+                <SurfaceView
+                    android:id="@+id/surface_view_8"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:id="@+id/channel_label_8"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|start"
+                    android:layout_margin="4dp"
+                    android:text="CH8"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:background="#80000000"
+                    android:padding="2dp" />
+            </FrameLayout>
+
+            <!-- Channel 9 -->
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="1dp"
+                android:background="#333333"
+                android:visibility="gone">
+
+                <SurfaceView
+                    android:id="@+id/surface_view_9"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:id="@+id/channel_label_9"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|start"
+                    android:layout_margin="4dp"
+                    android:text="CH9"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:background="#80000000"
+                    android:padding="2dp" />
+            </FrameLayout>
+
+            <!-- Channels 10-16 for 4x4 layout -->
+            <!-- Channel 10 -->
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="1dp"
+                android:background="#333333"
+                android:visibility="gone">
+
+                <SurfaceView
+                    android:id="@+id/surface_view_10"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:id="@+id/channel_label_10"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|start"
+                    android:layout_margin="4dp"
+                    android:text="CH10"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:background="#80000000"
+                    android:padding="2dp" />
+            </FrameLayout>
+
+            <!-- Channel 11 -->
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="1dp"
+                android:background="#333333"
+                android:visibility="gone">
+
+                <SurfaceView
+                    android:id="@+id/surface_view_11"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:id="@+id/channel_label_11"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|start"
+                    android:layout_margin="4dp"
+                    android:text="CH11"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:background="#80000000"
+                    android:padding="2dp" />
+            </FrameLayout>
+
+            <!-- Channel 12 -->
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="1dp"
+                android:background="#333333"
+                android:visibility="gone">
+
+                <SurfaceView
+                    android:id="@+id/surface_view_12"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:id="@+id/channel_label_12"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|start"
+                    android:layout_margin="4dp"
+                    android:text="CH12"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:background="#80000000"
+                    android:padding="2dp" />
+            </FrameLayout>
+
+            <!-- Channel 13 -->
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="1dp"
+                android:background="#333333"
+                android:visibility="gone">
+
+                <SurfaceView
+                    android:id="@+id/surface_view_13"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:id="@+id/channel_label_13"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|start"
+                    android:layout_margin="4dp"
+                    android:text="CH13"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:background="#80000000"
+                    android:padding="2dp" />
+            </FrameLayout>
+
+            <!-- Channel 14 -->
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="1dp"
+                android:background="#333333"
+                android:visibility="gone">
+
+                <SurfaceView
+                    android:id="@+id/surface_view_14"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:id="@+id/channel_label_14"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|start"
+                    android:layout_margin="4dp"
+                    android:text="CH14"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:background="#80000000"
+                    android:padding="2dp" />
+            </FrameLayout>
+
+            <!-- Channel 15 -->
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="1dp"
+                android:background="#333333"
+                android:visibility="gone">
+
+                <SurfaceView
+                    android:id="@+id/surface_view_15"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:id="@+id/channel_label_15"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|start"
+                    android:layout_margin="4dp"
+                    android:text="CH15"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:background="#80000000"
+                    android:padding="2dp" />
+            </FrameLayout>
+
+            <!-- Channel 16 -->
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:layout_margin="1dp"
+                android:background="#333333"
+                android:visibility="gone">
+
+                <SurfaceView
+                    android:id="@+id/surface_view_16"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:id="@+id/channel_label_16"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|start"
+                    android:layout_margin="4dp"
+                    android:text="CH16"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:background="#80000000"
+                    android:padding="2dp" />
+            </FrameLayout>
+
+        </GridLayout>
+        </FrameLayout>
+
+    </FrameLayout>
+
+    <!-- Layout control overlay (initially hidden) -->
+    <LinearLayout
+        android:id="@+id/layout_controls"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_centerHorizontal="true"
+        android:layout_marginBottom="20dp"
+        android:orientation="horizontal"
+        android:background="#80000000"
+        android:padding="8dp"
+        android:visibility="gone">
+
+        <Button
+            android:id="@+id/btn_layout_1x1"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_margin="4dp"
+            android:text="1"
+            android:textColor="#FFFFFF"
+            android:background="@drawable/layout_button_bg"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/btn_layout_2x2"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_margin="4dp"
+            android:text="4"
+            android:textColor="#FFFFFF"
+            android:background="@drawable/layout_button_bg"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/btn_layout_3x3"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_margin="4dp"
+            android:text="9"
+            android:textColor="#FFFFFF"
+            android:background="@drawable/layout_button_bg"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/btn_layout_4x4"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_margin="4dp"
+            android:text="16"
+            android:textColor="#FFFFFF"
+            android:background="@drawable/layout_button_bg"
+            android:textSize="14sp" />
+
+    </LinearLayout>
+
+    <!-- Status overlay -->
+    <LinearLayout
+        android:id="@+id/status_overlay"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+        android:layout_alignParentEnd="true"
+        android:layout_margin="16dp"
+        android:orientation="vertical"
+        android:background="#80000000"
+        android:padding="8dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/status_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="NVR System"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/fps_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="FPS: 30"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+
+</RelativeLayout>

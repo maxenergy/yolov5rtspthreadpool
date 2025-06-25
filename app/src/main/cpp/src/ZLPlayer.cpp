@@ -1,6 +1,8 @@
 #include <mk_common.h>
 #include <mk_player.h>
 #include <android/native_window_jni.h>
+#include <thread>
+#include <chrono>
 #include "ZLPlayer.h"
 #include "mpp_err.h"
 #include "cv_draw.h"
@@ -22,9 +24,17 @@ void *rtps_process(void *arg) {
 void *desplay_process(void *arg) {
     ZLPlayer *player = (ZLPlayer *) arg;
     if (player) {
-        while (1) {
-            player->display();
+        while (player->isStreaming) {
+            try {
+                player->display();
+                // Add small delay to prevent excessive CPU usage
+                std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60 FPS
+            } catch (...) {
+                LOGE("Exception in display process for channel %d", player->channelIndex);
+                break;
+            }
         }
+        LOGD("Display process exiting for channel %d", player->channelIndex);
     } else {
         LOGE("player is null");
     }
@@ -45,44 +55,105 @@ ZLPlayer::ZLPlayer(char *modelFileData, int modelDataLen) {
     // strcpy(this->data_source, data_source); // 把源 Copy给成员
     // this->isStreaming = false;
 
+    // Initialize rtsp_url with default value
+    strcpy(rtsp_url, "rtsp://admin:sharpi1688@192.168.1.127");
+
+    // Validate input parameters
+    if (!modelFileData || modelDataLen <= 0) {
+        LOGE("Invalid model data parameters: data=%p, size=%d", modelFileData, modelDataLen);
+        throw std::runtime_error("Invalid model data parameters");
+    }
+
     this->modelFileSize = modelDataLen;
     this->modelFileContent = (char *) malloc(modelDataLen);
+    if (!this->modelFileContent) {
+        LOGE("Failed to allocate memory for model data: %d bytes", modelDataLen);
+        throw std::runtime_error("Failed to allocate memory for model data");
+    }
     memcpy(this->modelFileContent, modelFileData, modelDataLen);
 
-    LOGD("create mpp");
+    LOGD("create mpp for model size: %d bytes", modelDataLen);
     // 创建上下文
     memset(&app_ctx, 0, sizeof(rknn_app_context_t)); // 初始化上下文
-    // app_ctx.job_cnt = 1;
-    // app_ctx.result_cnt = 1;
-    // app_ctx.mppDataThreadPool = new MppDataThreadPool();
-    // yolov8_thread_pool = new Yolov8ThreadPool(); // 创建线程池
-    // yolov8_thread_pool->setUpWithModelData(20, this->modelFileContent, this->modelFileSize);
-    app_ctx.yolov5ThreadPool = new Yolov5ThreadPool(); // 创建线程池
-    app_ctx.yolov5ThreadPool->setUpWithModelData(20, this->modelFileContent, this->modelFileSize);
 
-    // Initialize render frame queue
-    app_ctx.renderFrameQueue = new RenderFrameQueue();
+    try {
+        // 创建YOLOv5线程池
+        app_ctx.yolov5ThreadPool = new Yolov5ThreadPool(); // 创建线程池
+        if (!app_ctx.yolov5ThreadPool) {
+            throw std::runtime_error("Failed to create YOLOv5 thread pool");
+        }
 
-    // app_ctx.mppDataThreadPool->setUpWithModelData(THREAD_POOL, this->modelFileContent, this->modelFileSize);
+        // 设置模型数据，减少线程池大小以节省内存（多通道模式下使用更小的线程池）
+        int result = app_ctx.yolov5ThreadPool->setUpWithModelData(5, this->modelFileContent, this->modelFileSize);
+        if (result != NN_SUCCESS) {
+            LOGE("Failed to setup YOLOv5 thread pool with model data, error: %d", result);
+            throw std::runtime_error("Failed to setup YOLOv5 thread pool");
+        }
 
-    // yolov8_thread_pool->setUp(model_path, 12);   // 初始化线程池
+        // Initialize render frame queue
+        app_ctx.renderFrameQueue = new RenderFrameQueue();
+        if (!app_ctx.renderFrameQueue) {
+            throw std::runtime_error("Failed to create render frame queue");
+        }
 
-    // MPP 解码器
-    if (app_ctx.decoder == nullptr) {
-        LOGD("create decoder");
-        MppDecoder *decoder = new MppDecoder();           // 创建解码器
-        decoder->Init(264, 25, &app_ctx);                 // 初始化解码器
-        decoder->SetCallback(mpp_decoder_frame_callback); // 设置回调函数，用来处理解码后的数据
-        app_ctx.decoder = decoder;                        // 将解码器赋值给上下文
-    } else {
-        LOGD("decoder is not null");
+        // MPP 解码器
+        if (app_ctx.decoder == nullptr) {
+            LOGD("create decoder");
+            MppDecoder *decoder = new MppDecoder();           // 创建解码器
+            if (!decoder) {
+                throw std::runtime_error("Failed to create MPP decoder");
+            }
+
+            int initResult = decoder->Init(264, 25, &app_ctx);  // 初始化解码器
+            if (initResult != 0) {
+                LOGE("Failed to initialize MPP decoder, error: %d", initResult);
+                delete decoder;
+                throw std::runtime_error("Failed to initialize MPP decoder");
+            }
+
+            decoder->SetCallback(mpp_decoder_frame_callback); // 设置回调函数，用来处理解码后的数据
+            app_ctx.decoder = decoder;                        // 将解码器赋值给上下文
+        } else {
+            LOGD("decoder is not null");
+        }
+
+        // 启动rtsp线程
+        int rtspResult = pthread_create(&pid_rtsp, nullptr, rtps_process, this);
+        if (rtspResult != 0) {
+            LOGE("Failed to create RTSP thread, error: %d", rtspResult);
+            throw std::runtime_error("Failed to create RTSP thread");
+        }
+
+        // 启动显示线程
+        int renderResult = pthread_create(&pid_render, nullptr, desplay_process, this);
+        if (renderResult != 0) {
+            LOGE("Failed to create render thread, error: %d", renderResult);
+            throw std::runtime_error("Failed to create render thread");
+        }
+
+        LOGD("ZLPlayer initialized successfully");
+
+    } catch (const std::exception& e) {
+        LOGE("Exception during ZLPlayer initialization: %s", e.what());
+        // Cleanup on failure
+        if (app_ctx.yolov5ThreadPool) {
+            delete app_ctx.yolov5ThreadPool;
+            app_ctx.yolov5ThreadPool = nullptr;
+        }
+        if (app_ctx.renderFrameQueue) {
+            delete app_ctx.renderFrameQueue;
+            app_ctx.renderFrameQueue = nullptr;
+        }
+        if (app_ctx.decoder) {
+            delete app_ctx.decoder;
+            app_ctx.decoder = nullptr;
+        }
+        if (this->modelFileContent) {
+            free(this->modelFileContent);
+            this->modelFileContent = nullptr;
+        }
+        throw; // Re-throw the exception
     }
-    // 启动rtsp线程
-    pthread_create(&pid_rtsp, nullptr, rtps_process, this);
-    // 启动显示线程
-    pthread_create(&pid_render, nullptr, desplay_process, this);
-    // 读取视频流
-    // process_video_rtsp(&app_ctx, "rrtsp://192.168.31.147:8554/unicast");
 }
 
 void API_CALL
@@ -140,29 +211,95 @@ on_mk_shutdown_func(void *user_data, int err_code, const char *err_msg, mk_track
     printf("play interrupted: %d %s", err_code, err_msg);
 }
 
-// 函数指针的实现 实现渲染画面
-void renderFrame(uint8_t *src_data, int width, int height, int src_line_size) {
+// Channel-specific frame rendering using channel's own surface
+void ZLPlayer::renderFrame(uint8_t *src_data, int width, int height, int src_line_size) {
 
-    pthread_mutex_lock(&windowMutex);
-    if (!window) {
-        LOGW("ANativeWindow is null, cannot render frame");
-        pthread_mutex_unlock(&windowMutex); // 出现了问题后，必须考虑到，释放锁，怕出现死锁问题
+    pthread_mutex_lock(&surfaceMutex);
+    if (!channelSurface) {
+        LOGW("Channel %d: ANativeWindow is null, cannot render frame. Surface was not set properly.", channelIndex);
+        LOGW("Channel %d: Frame data - width: %d, height: %d, src_line_size: %d", channelIndex, width, height, src_line_size);
+        pthread_mutex_unlock(&surfaceMutex);
         return;
     }
 
+    // Enhanced Surface validity check
+    int32_t surfaceWidth = ANativeWindow_getWidth(channelSurface);
+    int32_t surfaceHeight = ANativeWindow_getHeight(channelSurface);
+    int32_t surfaceFormat = ANativeWindow_getFormat(channelSurface);
+
+    if (surfaceWidth <= 0 || surfaceHeight <= 0) {
+        LOGE("Channel %d: Surface appears to be invalid - width: %d, height: %d, format: %d",
+             channelIndex, surfaceWidth, surfaceHeight, surfaceFormat);
+        LOGE("Channel %d: Surface pointer: %p, requesting surface recovery", channelIndex, channelSurface);
+
+        // Mark surface as invalid and request recovery
+        surfaceInvalidCount++;
+        if (surfaceInvalidCount > MAX_SURFACE_INVALID_COUNT) {
+            LOGE("Channel %d: Surface invalid count exceeded limit (%d), clearing surface",
+                 channelIndex, MAX_SURFACE_INVALID_COUNT);
+            ANativeWindow_release(channelSurface);
+            channelSurface = nullptr;
+            surfaceInvalidCount = 0;
+
+            // Request recovery with timestamp
+            if (!surfaceRecoveryRequested) {
+                struct timeval currentTime;
+                gettimeofday(&currentTime, NULL);
+                surfaceRecoveryRequestTime = currentTime.tv_sec * 1000 + currentTime.tv_usec / 1000;
+                surfaceRecoveryRequested = true;
+                LOGW("Channel %d: Surface recovery requested at timestamp: %ld", channelIndex, surfaceRecoveryRequestTime);
+            }
+        }
+
+        pthread_mutex_unlock(&surfaceMutex);
+        return;
+    } else {
+        // Reset invalid count on successful validation
+        surfaceInvalidCount = 0;
+    }
+
+    LOGD("Channel %d: Rendering frame to surface %p, size: %dx%d (surface: %dx%d)",
+         channelIndex, channelSurface, width, height, surfaceWidth, surfaceHeight);
+
     // 设置窗口的大小，各个属性
-    ANativeWindow_setBuffersGeometry(window, width, height, WINDOW_FORMAT_RGBA_8888);
+    int setBuffersResult = ANativeWindow_setBuffersGeometry(channelSurface, width, height, WINDOW_FORMAT_RGBA_8888);
+    if (setBuffersResult != 0) {
+        LOGE("Channel %d: Failed to set buffer geometry, result: %d", channelIndex, setBuffersResult);
+        pthread_mutex_unlock(&surfaceMutex);
+        return;
+    }
 
     // 他自己有个缓冲区 buffer
     ANativeWindow_Buffer window_buffer;
 
     // 如果我在渲染的时候，是被锁住的，那我就无法渲染，我需要释放 ，防止出现死锁
-    if (ANativeWindow_lock(window, &window_buffer, 0)) {
-        ANativeWindow_release(window);
-        window = 0;
+    int lockResult = ANativeWindow_lock(channelSurface, &window_buffer, 0);
+    if (lockResult != 0) {
+        LOGE("Channel %d: Failed to lock surface buffer, result: %d", channelIndex, lockResult);
 
-        pthread_mutex_unlock(&windowMutex); // 解锁，怕出现死锁
+        // Track consecutive lock failures
+        surfaceLockFailCount++;
+        if (surfaceLockFailCount > MAX_SURFACE_LOCK_FAIL_COUNT) {
+            LOGE("Channel %d: Surface lock failures exceeded limit (%d), requesting surface recovery",
+                 channelIndex, MAX_SURFACE_LOCK_FAIL_COUNT);
+            surfaceLockFailCount = 0;
+
+            // Request recovery with timestamp
+            if (!surfaceRecoveryRequested) {
+                struct timeval currentTime;
+                gettimeofday(&currentTime, NULL);
+                surfaceRecoveryRequestTime = currentTime.tv_sec * 1000 + currentTime.tv_usec / 1000;
+                surfaceRecoveryRequested = true;
+                LOGW("Channel %d: Surface recovery requested due to lock failures at timestamp: %ld",
+                     channelIndex, surfaceRecoveryRequestTime);
+            }
+        }
+
+        pthread_mutex_unlock(&surfaceMutex);
         return;
+    } else {
+        // Reset lock fail count on successful lock
+        surfaceLockFailCount = 0;
     }
 
     // 填充[window_buffer]  画面就出来了  ==== 【目标 window_buffer】
@@ -176,11 +313,69 @@ void renderFrame(uint8_t *src_data, int width, int height, int src_line_size) {
     }
 
     // 数据刷新
-    ANativeWindow_unlockAndPost(window); // 解锁后 并且刷新 window_buffer的数据显示画面
-    pthread_mutex_unlock(&windowMutex);
+    int unlockResult = ANativeWindow_unlockAndPost(channelSurface);
+    if (unlockResult != 0) {
+        LOGE("Channel %d: Failed to unlock and post surface buffer, result: %d", channelIndex, unlockResult);
+    } else {
+        // Log successful frame rendering periodically
+        static int frameCounter = 0;
+        frameCounter++;
+        if (frameCounter % 300 == 0) { // Log every 300 frames (about every 10 seconds at 30fps)
+            struct timeval currentTime;
+            gettimeofday(&currentTime, NULL);
+            long timestamp = currentTime.tv_sec * 1000 + currentTime.tv_usec / 1000;
+
+            LOGD("Channel %d: Successfully rendered frame #%d at timestamp: %ld (surface: %p, size: %dx%d)",
+                 channelIndex, frameCounter, timestamp, channelSurface, width, height);
+        }
+    }
+
+    pthread_mutex_unlock(&surfaceMutex);
 }
 
 void ZLPlayer::display() {
+    // Check if surface recovery is needed with timeout mechanism
+    if (surfaceRecoveryRequested) {
+        struct timeval currentTime;
+        gettimeofday(&currentTime, NULL);
+        long currentTimeMs = currentTime.tv_sec * 1000 + currentTime.tv_usec / 1000;
+
+        // Check if recovery has timed out
+        if (surfaceRecoveryRequestTime > 0 &&
+            (currentTimeMs - surfaceRecoveryRequestTime) > SURFACE_RECOVERY_TIMEOUT_MS) {
+
+            LOGE("Channel %d: Surface recovery timed out after %ld ms, attempt %d/%d",
+                 channelIndex, (currentTimeMs - surfaceRecoveryRequestTime),
+                 surfaceRecoveryAttempts, MAX_SURFACE_RECOVERY_ATTEMPTS);
+
+            surfaceRecoveryAttempts++;
+
+            if (surfaceRecoveryAttempts >= MAX_SURFACE_RECOVERY_ATTEMPTS) {
+                LOGE("Channel %d: Maximum surface recovery attempts reached, forcing reset", channelIndex);
+                // Force reset the recovery state to prevent permanent blocking
+                surfaceRecoveryRequested = false;
+                surfaceRecoveryRequestTime = 0;
+                surfaceRecoveryAttempts = 0;
+                surfaceInvalidCount = 0;
+                surfaceLockFailCount = 0;
+
+                // Continue with normal rendering attempt
+            } else {
+                // Reset recovery request time for next attempt
+                surfaceRecoveryRequestTime = currentTimeMs;
+                LOGW("Channel %d: Surface recovery timeout, retrying (attempt %d/%d)",
+                     channelIndex, surfaceRecoveryAttempts, MAX_SURFACE_RECOVERY_ATTEMPTS);
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                return;
+            }
+        } else {
+            LOGW("Channel %d: Surface recovery requested, skipping frame rendering (elapsed: %ld ms)",
+                 channelIndex, surfaceRecoveryRequestTime > 0 ? (currentTimeMs - surfaceRecoveryRequestTime) : 0);
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            return;
+        }
+    }
+
     int queueSize = app_ctx.renderFrameQueue->size();
     if (queueSize > 5) {  // Only log when queue is getting full
         LOGD("app_ctx.renderFrameQueue.size() :%d", queueSize);
@@ -204,12 +399,27 @@ void ZLPlayer::display() {
     if (frameDataPtr->hasDetections && !frameDataPtr->detections.empty()) {
         LOGD("Drawing %zu detections on frame %d", frameDataPtr->detections.size(), frameDataPtr->frameId);
 
-        // Draw detections directly on RGBA buffer for better performance
-        DrawDetectionsOnRGBA((uint8_t*)frameDataPtr->data.get(),
-                           frameDataPtr->screenW,
-                           frameDataPtr->screenH,
-                           frameDataPtr->screenStride,
-                           frameDataPtr->detections);
+        // Use enhanced detection rendering for better multi-channel performance
+        if (enhancedDetectionRenderer) {
+            enhancedDetectionRenderer->renderDetections(
+                channelIndex,
+                (uint8_t*)frameDataPtr->data.get(),
+                frameDataPtr->screenW,
+                frameDataPtr->screenH,
+                frameDataPtr->screenStride,
+                frameDataPtr->detections
+            );
+        } else {
+            // Fallback to adaptive rendering
+            DrawDetectionsAdaptive((uint8_t*)frameDataPtr->data.get(),
+                                 frameDataPtr->screenW,
+                                 frameDataPtr->screenH,
+                                 frameDataPtr->screenStride,
+                                 frameDataPtr->detections,
+                                 channelIndex,
+                                 isActiveChannel,
+                                 getCurrentSystemLoad());
+        }
     }
 
     // Render the frame using the smart pointer's get() method
@@ -223,6 +433,171 @@ void ZLPlayer::display() {
 
     // Control frame rate - limit to ~30 FPS
     std::this_thread::sleep_for(std::chrono::milliseconds(33));
+}
+
+// Enhanced detection rendering methods implementation
+void ZLPlayer::setEnhancedDetectionRenderer(std::shared_ptr<EnhancedDetectionRenderer> renderer) {
+    enhancedDetectionRenderer = renderer;
+    LOGD("Enhanced detection renderer set for ZLPlayer");
+}
+
+void ZLPlayer::setRenderingMonitor(std::shared_ptr<DetectionRenderingMonitor> monitor) {
+    renderingMonitor = monitor;
+    LOGD("Rendering monitor set for ZLPlayer");
+}
+
+void ZLPlayer::setChannelIndex(int index) {
+    channelIndex = index;
+    LOGD("Channel index set to %d", index);
+}
+
+void ZLPlayer::setActiveChannel(bool active) {
+    isActiveChannel = active;
+    if (enhancedDetectionRenderer) {
+        enhancedDetectionRenderer->setChannelActive(channelIndex, active);
+    }
+    LOGD("Channel %d active state set to %s", channelIndex, active ? "true" : "false");
+}
+
+void ZLPlayer::updateSystemLoad(float load) {
+    currentSystemLoad = load;
+    if (enhancedDetectionRenderer) {
+        enhancedDetectionRenderer->updateSystemLoad(load);
+    }
+}
+
+float ZLPlayer::getCurrentSystemLoad() const {
+    return currentSystemLoad;
+}
+
+// Channel-specific surface management
+void ZLPlayer::setChannelSurface(ANativeWindow* surface) {
+    struct timeval currentTime;
+    gettimeofday(&currentTime, NULL);
+    long timestamp = currentTime.tv_sec * 1000 + currentTime.tv_usec / 1000;
+
+    LOGD("setChannelSurface called for channel %d, surface: %p at timestamp: %ld", channelIndex, surface, timestamp);
+
+    pthread_mutex_lock(&surfaceMutex);
+
+    // Release previous surface
+    if (channelSurface) {
+        // Log detailed surface information before release
+        int32_t oldWidth = ANativeWindow_getWidth(channelSurface);
+        int32_t oldHeight = ANativeWindow_getHeight(channelSurface);
+        int32_t oldFormat = ANativeWindow_getFormat(channelSurface);
+
+        LOGD("Channel %d: Releasing previous surface: %p (size: %dx%d, format: %d) at timestamp: %ld",
+             channelIndex, channelSurface, oldWidth, oldHeight, oldFormat, timestamp);
+
+        ANativeWindow_release(channelSurface);
+        channelSurface = nullptr;
+
+        // Reset error counters and recovery state when surface is changed
+        surfaceInvalidCount = 0;
+        surfaceLockFailCount = 0;
+        surfaceRecoveryRequested = false;
+        surfaceRecoveryRequestTime = 0;
+        surfaceRecoveryAttempts = 0;
+    }
+
+    // Set new surface
+    channelSurface = surface;
+    if (surface) {
+        ANativeWindow_acquire(surface);
+
+        // Log detailed new surface information
+        int32_t newWidth = ANativeWindow_getWidth(surface);
+        int32_t newHeight = ANativeWindow_getHeight(surface);
+        int32_t newFormat = ANativeWindow_getFormat(surface);
+
+        LOGD("Channel %d surface set and acquired: %p (size: %dx%d, format: %d) at timestamp: %ld",
+             channelIndex, surface, newWidth, newHeight, newFormat, timestamp);
+
+        // Validate new surface immediately
+        if (newWidth <= 0 || newHeight <= 0) {
+            LOGE("Channel %d: WARNING - New surface has invalid dimensions: %dx%d",
+                 channelIndex, newWidth, newHeight);
+        }
+    } else {
+        LOGD("Channel %d surface cleared at timestamp: %ld", channelIndex, timestamp);
+    }
+
+    pthread_mutex_unlock(&surfaceMutex);
+}
+
+ANativeWindow* ZLPlayer::getChannelSurface() const {
+    return channelSurface;
+}
+
+// Surface recovery and health monitoring methods
+bool ZLPlayer::isSurfaceRecoveryRequested() const {
+    return surfaceRecoveryRequested;
+}
+
+void ZLPlayer::clearSurfaceRecoveryRequest() {
+    surfaceRecoveryRequested = false;
+    surfaceRecoveryRequestTime = 0;
+    surfaceRecoveryAttempts = 0;
+    surfaceInvalidCount = 0;
+    surfaceLockFailCount = 0;
+    LOGD("Channel %d: Surface recovery request cleared completely", channelIndex);
+}
+
+void ZLPlayer::requestSurfaceRecovery() {
+    surfaceRecoveryRequested = true;
+    LOGW("Channel %d: Surface recovery requested", channelIndex);
+}
+
+bool ZLPlayer::validateSurfaceHealth() {
+    pthread_mutex_lock(&surfaceMutex);
+
+    if (!channelSurface) {
+        pthread_mutex_unlock(&surfaceMutex);
+        return false;
+    }
+
+    // Check surface dimensions and format
+    int32_t width = ANativeWindow_getWidth(channelSurface);
+    int32_t height = ANativeWindow_getHeight(channelSurface);
+    int32_t format = ANativeWindow_getFormat(channelSurface);
+
+    bool isHealthy = (width > 0 && height > 0 && format > 0);
+
+    if (!isHealthy) {
+        LOGW("Channel %d: Surface health check failed - width: %d, height: %d, format: %d",
+             channelIndex, width, height, format);
+    } else {
+        LOGD("Channel %d: Surface health check passed - %dx%d, format: %d",
+             channelIndex, width, height, format);
+    }
+
+    pthread_mutex_unlock(&surfaceMutex);
+    return isHealthy;
+}
+
+void ZLPlayer::forceSurfaceReset() {
+    pthread_mutex_lock(&surfaceMutex);
+
+    LOGW("Channel %d: Force resetting surface state", channelIndex);
+
+    // Clear all surface-related state
+    surfaceRecoveryRequested = false;
+    surfaceRecoveryRequestTime = 0;
+    surfaceRecoveryAttempts = 0;
+    surfaceInvalidCount = 0;
+    surfaceLockFailCount = 0;
+
+    // If we have a surface, release it
+    if (channelSurface) {
+        LOGW("Channel %d: Releasing surface during force reset: %p", channelIndex, channelSurface);
+        ANativeWindow_release(channelSurface);
+        channelSurface = nullptr;
+    }
+
+    pthread_mutex_unlock(&surfaceMutex);
+
+    LOGW("Channel %d: Surface force reset completed", channelIndex);
 }
 
 void ZLPlayer::get_detect_result() {
@@ -331,7 +706,7 @@ int ZLPlayer::process_video_rtsp() {
         DrawDetections(origin_mat, objects);
 
         cv::cvtColor(origin_mat, origin_mat, cv::COLOR_RGB2RGBA);
-        renderFrame(origin_mat.data, width, height, width * get_bpp_from_format(RK_FORMAT_RGBA_8888));
+        this->renderFrame(origin_mat.data, width, height, width * get_bpp_from_format(RK_FORMAT_RGBA_8888));
 
         gettimeofday(&end, NULL);
 
@@ -392,6 +767,12 @@ ZLPlayer::~ZLPlayer() {
     if (modelFileContent) {
         free(modelFileContent);
         modelFileContent = nullptr;
+    }
+
+    // Release channel surface
+    if (channelSurface) {
+        ANativeWindow_release(channelSurface);
+        channelSurface = nullptr;
     }
 
     LOGD("ZLPlayer destructor completed");
@@ -660,7 +1041,7 @@ void ZLPlayer::mpp_decoder_frame_callback(void *userdata, int width_stride, int 
 
     // LOGD("result_cnt: %d\n", result_cnt);
     cv::cvtColor(origin_mat, origin_mat, cv::COLOR_RGB2RGBA);
-    renderFrame(origin_mat.data, width, height, width * get_bpp_from_format(RK_FORMAT_RGBA_8888));
+    this->renderFrame(origin_mat.data, width, height, width * get_bpp_from_format(RK_FORMAT_RGBA_8888));
 
     gettimeofday(&end, NULL);
 

@@ -333,3 +333,235 @@ void DrawDetectionsOnRGBA(uint8_t* rgba_data, int width, int height, int stride,
 
     LOGD("Finished drawing detections on RGBA buffer");
 }
+
+// Enhanced viewport-aware detection rendering
+void DrawDetectionsOnRGBAViewportOptimized(uint8_t* rgba_data, int width, int height, int stride,
+                                          const std::vector<Detection>& objects,
+                                          const ViewportRenderConfig& config) {
+    if (!rgba_data || objects.empty()) {
+        return;
+    }
+
+    LOGD("Drawing %zu detections with viewport optimization (%dx%d, scale: %.2f)",
+         objects.size(), width, height, config.scaleFactor);
+
+    // Calculate adaptive parameters based on viewport
+    int adaptiveThickness = calculateAdaptiveThickness(width, height, config);
+    float adaptiveTextScale = calculateAdaptiveTextScale(width, height, config);
+
+    for (const auto& detection : objects) {
+        // Skip low-confidence detections in small viewports
+        if (config.isSmallViewport && detection.confidence < 0.7f) {
+            continue;
+        }
+
+        // Get bounding box coordinates
+        int x = detection.box.x;
+        int y = detection.box.y;
+        int w = detection.box.width;
+        int h = detection.box.height;
+
+        // Ensure coordinates are within bounds
+        if (x < 0 || y < 0 || x >= width || y >= height || w <= 0 || h <= 0) {
+            continue;
+        }
+
+        // Skip very small boxes in small viewports
+        if (config.isSmallViewport && (w < 10 || h < 10)) {
+            continue;
+        }
+
+        // Get color for this class
+        uint8_t r, g, b;
+        getClassColor(detection.class_id, r, g, b);
+
+        // Draw bounding box with adaptive thickness
+        drawRectangle(rgba_data, width, height, stride, x, y, w, h, adaptiveThickness, r, g, b);
+
+        // Determine what text to show based on viewport size and configuration
+        bool showDetails = shouldShowDetectionDetails(detection, config);
+        if (!showDetails) {
+            continue; // Skip text rendering for small viewports or low-priority detections
+        }
+
+        // Prepare label text
+        std::ostringstream label_stream;
+        if (config.showClassNamesInSmallViewport) {
+            label_stream << detection.className;
+        }
+        if (config.showConfidenceInSmallViewport) {
+            if (config.showClassNamesInSmallViewport) {
+                label_stream << " ";
+            }
+            label_stream << std::fixed << std::setprecision(2) << detection.confidence;
+        }
+        std::string label = label_stream.str();
+
+        if (label.empty()) {
+            continue;
+        }
+
+        // Calculate text position with adaptive scaling
+        int text_x = x;
+        int text_y = (y > 12) ? (y - 4) : (y + 12);
+
+        // Adaptive text size calculation
+        int text_width = static_cast<int>(label.length() * 6 * adaptiveTextScale);
+        int text_height = static_cast<int>(8 * adaptiveTextScale);
+
+        // Ensure text fits within viewport
+        if (text_x + text_width >= width) {
+            text_x = width - text_width - 2;
+        }
+        if (text_y + text_height >= height) {
+            text_y = height - text_height - 2;
+        }
+
+        // Draw background rectangle for better text visibility (only if text is large enough)
+        if (adaptiveTextScale > 0.5f) {
+            for (int bg_y = text_y - 1; bg_y < text_y + text_height + 1; bg_y++) {
+                for (int bg_x = text_x - 1; bg_x < text_x + text_width + 1; bg_x++) {
+                    if (bg_x >= 0 && bg_x < width && bg_y >= 0 && bg_y < height) {
+                        int offset = bg_y * stride + bg_x * 4;
+                        // Semi-transparent black background
+                        rgba_data[offset] = rgba_data[offset] / 2;     // R
+                        rgba_data[offset + 1] = rgba_data[offset + 1] / 2; // G
+                        rgba_data[offset + 2] = rgba_data[offset + 2] / 2; // B
+                    }
+                }
+            }
+        }
+
+        // Draw the label text with adaptive scaling
+        drawText(rgba_data, width, height, stride, text_x, text_y, label, 255, 255, 255);
+    }
+
+    LOGD("Finished viewport-optimized detection rendering");
+}
+
+// Adaptive detection rendering for multi-channel environments
+void DrawDetectionsAdaptive(uint8_t* rgba_data, int width, int height, int stride,
+                           const std::vector<Detection>& objects, int channelIndex,
+                           bool isActiveChannel, float systemLoad) {
+    if (!rgba_data || objects.empty()) {
+        return;
+    }
+
+    // Calculate viewport configuration based on channel state and system load
+    ViewportRenderConfig config = calculateViewportConfig(width, height, isActiveChannel);
+
+    // Adjust configuration based on system load
+    if (systemLoad > 0.8f) {
+        // High system load - reduce rendering complexity
+        config.showConfidenceInSmallViewport = false;
+        config.showClassNamesInSmallViewport = isActiveChannel; // Only show for active channel
+        config.minBoxThickness = 1;
+        config.maxBoxThickness = 3;
+    } else if (systemLoad > 0.6f) {
+        // Medium system load - moderate complexity
+        config.showConfidenceInSmallViewport = isActiveChannel;
+        config.showClassNamesInSmallViewport = true;
+    }
+    // Low system load - full rendering (default config)
+
+    LOGD("Adaptive rendering for channel %d (active: %s, load: %.2f, viewport: %dx%d)",
+         channelIndex, isActiveChannel ? "yes" : "no", systemLoad, width, height);
+
+    // Use viewport-optimized rendering
+    DrawDetectionsOnRGBAViewportOptimized(rgba_data, width, height, stride, objects, config);
+}
+
+// Calculate viewport configuration based on dimensions and channel state
+ViewportRenderConfig calculateViewportConfig(int width, int height, bool isActiveChannel) {
+    ViewportRenderConfig config;
+
+    config.viewportWidth = width;
+    config.viewportHeight = height;
+
+    // Calculate scale factor based on viewport size
+    float baseArea = 1920.0f * 1080.0f; // Full HD reference
+    float currentArea = static_cast<float>(width * height);
+    config.scaleFactor = std::sqrt(currentArea / baseArea);
+
+    // Determine if this is a small viewport
+    config.isSmallViewport = (width < 480 || height < 320) || (!isActiveChannel && (width < 960 || height < 540));
+
+    // Adjust settings for small viewports
+    if (config.isSmallViewport) {
+        config.showConfidenceInSmallViewport = isActiveChannel; // Only show confidence for active small channels
+        config.showClassNamesInSmallViewport = true; // Always show class names for identification
+        config.minBoxThickness = 1;
+        config.maxBoxThickness = 3;
+        config.minTextScale = 0.3f;
+        config.maxTextScale = 0.6f;
+    } else {
+        // Normal or large viewport
+        config.showConfidenceInSmallViewport = true;
+        config.showClassNamesInSmallViewport = true;
+        config.minBoxThickness = 2;
+        config.maxBoxThickness = 6;
+        config.minTextScale = 0.5f;
+        config.maxTextScale = 1.0f;
+    }
+
+    return config;
+}
+
+// Determine if detection details should be shown based on viewport and detection properties
+bool shouldShowDetectionDetails(const Detection& detection, const ViewportRenderConfig& config) {
+    // Always show details for high-confidence detections
+    if (detection.confidence > 0.9f) {
+        return true;
+    }
+
+    // In small viewports, be more selective
+    if (config.isSmallViewport) {
+        // Only show details for medium-high confidence detections
+        if (detection.confidence < 0.6f) {
+            return false;
+        }
+
+        // Check if the detection box is large enough to warrant text
+        float boxArea = detection.box.width * detection.box.height;
+        float viewportArea = config.viewportWidth * config.viewportHeight;
+        float relativeArea = boxArea / viewportArea;
+
+        // Only show text for detections that occupy at least 1% of viewport
+        return relativeArea > 0.01f;
+    }
+
+    // For normal viewports, show details for most detections
+    return detection.confidence > 0.4f;
+}
+
+// Calculate adaptive box thickness based on viewport size
+int calculateAdaptiveThickness(int width, int height, const ViewportRenderConfig& config) {
+    if (!config.adaptiveBoxThickness) {
+        return config.minBoxThickness;
+    }
+
+    // Base thickness on viewport size
+    int baseThickness = std::max(1, std::min(width, height) / 200);
+
+    // Apply scale factor
+    int adaptiveThickness = static_cast<int>(baseThickness * config.scaleFactor);
+
+    // Clamp to configured range
+    return std::max(config.minBoxThickness, std::min(config.maxBoxThickness, adaptiveThickness));
+}
+
+// Calculate adaptive text scale based on viewport size
+float calculateAdaptiveTextScale(int width, int height, const ViewportRenderConfig& config) {
+    if (!config.adaptiveTextSize) {
+        return config.minTextScale;
+    }
+
+    // Base scale on viewport size
+    float baseScale = std::min(width, height) / 1000.0f; // Reference: 1000px = 1.0 scale
+
+    // Apply scale factor
+    float adaptiveScale = baseScale * config.scaleFactor;
+
+    // Clamp to configured range
+    return std::max(config.minTextScale, std::min(config.maxTextScale, adaptiveScale));
+}

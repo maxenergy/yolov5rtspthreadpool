@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.22.1)
 
 project("myyolov5rtspthreadpool")
 
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # 3rdparty dependencies paths
 set(THIRDPARTY_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../../3rdparty/target)
 set(FFMPEG ${THIRDPARTY_ROOT}/ffmpeg)  # ffmpeg的路径
@@ -63,12 +67,37 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
         process/preprocess.cpp
         process/yolov5_postprocess.cpp
         draw/cv_draw.cpp
+        # Per-Channel Detection System
+        src/PerChannelDetection.cpp
+        src/MultiStreamDetectionIntegration.cpp
+        # Stream Health Integration
+        src/StreamHealthIntegration.cpp
+        # Decoder Resource Sharing
+        src/DecoderResourceSharing.cpp
+        # Shared Resource Pool
+        src/SharedResourcePool.cpp
+        # Channel State Management
+        src/ChannelStateManager.cpp
+        # System Performance Monitor
+        src/SystemPerformanceMonitor.cpp
+        # Multi-Channel Frame Compositor
+        src/MultiChannelFrameCompositor.cpp
+        # Enhanced Detection Renderer
+        src/EnhancedDetectionRenderer.cpp
+        # Frame Rate Manager
+        src/FrameRateManager.cpp
+        # GPU Accelerated Renderer
+        src/GPUAcceleratedRenderer.cpp
+        # Thread Safe Resource Manager
+        src/ThreadSafeResourceManager.cpp
         )
 
 target_link_libraries(${CMAKE_PROJECT_NAME}
         ${OpenCV_LIBS}
         android
         log
+        EGL
+        GLESv2
         ${MPP}/libs/${ANDROID_ABI}/libmpp.so
         ${RGA}/libs/${ANDROID_ABI}/librga.so
         ${RKNN}/libs/${ANDROID_ABI}/librknnrt.so
